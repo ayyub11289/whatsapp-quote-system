@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WhatsApp 报价图片生成器</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #0b1120;
+    --panel: #111a2e;
+    --panel-2: #16233d;
+    --line: #233351;
+    --text: #e6edf7;
+    --muted: #8aa0c0;
+    --accent: #2dd4bf;
+    --accent-2: #38bdf8;
+    --accent-3: #818cf8;
+    --danger: #f87171;
+    --warn: #fbbf24;
+    --ok: #34d399;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+    background: radial-gradient(1200px 800px at 80% -10%, #16284a 0%, var(--bg) 55%);
+    color: var(--text);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+  header.topbar {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(10,16,30,.7);
+    backdrop-filter: blur(8px);
+    position: sticky; top: 0; z-index: 30;
+  }
+  .logo-badge {
+    width: 34px; height: 34px; border-radius: 9px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: grid; place-items: center; font-weight: 800; color: #06131a;
+  }
+  .topbar h1 { font-size: 16px; margin: 0; font-weight: 700; letter-spacing: .3px; }
+  .topbar .sub { color: var(--muted); font-size: 12px; }
+  .grow { flex: 1; }
+  .tabs { display: flex; gap: 8px; }
+  .tab-btn {
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+    padding: 7px 14px; border-radius: 999px; cursor: pointer; font-size: 13px;
+  }
+  .tab-btn.active { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #04121a; border-color: transparent; font-weight: 700; }
+
+  .layout { display: flex; height: calc(100vh - 59px); width: 100%; overflow: hidden; }
+  .pane { overflow: auto; padding: 16px; }
+  .pane.left { width: 320px; min-width: 220px; border-right: 1px solid var(--line); }
+  .pane.center { flex: 1; min-width: 360px; }
+  .pane.right { width: 420px; min-width: 320px; border-left: 1px solid var(--line); }
+  .gutter { width: 6px; cursor: col-resize; background: transparent; flex: 0 0 auto; position: relative; }
+  .gutter::after { content:""; position:absolute; left:2px; top:0; bottom:0; width:2px; background: var(--line); }
+  .gutter:hover::after { background: var(--accent); }
+  body.dragging { user-select: none; cursor: col-resize; }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 14px; }
+  .card h2 { font-size: 14px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  .muted { color: var(--muted); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  input, select, textarea, button { font-family: inherit; font-size: 13px; }
+  input[type=text], input[type=number], input[type=date], select, textarea {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--line);
+    color: var(--text); border-radius: 9px; padding: 8px 10px; outline: none;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent-2); }
+  textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
+  button {
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+    padding: 8px 12px; border-radius: 9px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent-2); }
+  button.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #04121a; border: none; font-weight: 700; }
+  button.ghost { background: transparent; }
+  button.danger { color: var(--danger); border-color: #5b2030; }
+  button.sm { padding: 5px 9px; font-size: 12px; }
+  .btnrow { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .4px; }
+  tr.no-price td { }
+  .pill { display: inline-block; padding: 2px 7px; border-radius: 999px; font-size: 11px; border: 1px solid var(--line); color: var(--muted); }
+  .pill.cat { background: rgba(56,189,248,.12); color: var(--accent-2); border-color: transparent; }
+  .pill.warn { background: rgba(251,191,36,.14); color: var(--warn); border-color: transparent; }
+  .pill.unrec { background: rgba(248,113,113,.14); color: var(--danger); border-color: transparent; }
+  .pill.ok { background: rgba(52,211,153,.14); color: var(--ok); border-color: transparent; }
+
+  .product-list { max-height: 50vh; overflow: auto; }
+  .item { border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 10px; background: var(--panel-2); }
+  .item .top { display: flex; justify-content: space-between; gap: 8px; }
+  .item .name { font-weight: 600; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+
+  .slider-row { display: flex; align-items: center; gap: 10px; }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+
+  .totals { background: var(--panel-2); border-radius: 10px; padding: 12px; }
+  .totals .line { display: flex; justify-content: space-between; padding: 4px 0; }
+  .totals .final { font-size: 18px; font-weight: 800; color: var(--accent); }
+
+  canvas.preview { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 10px; background: #000; }
+  .hidden { display: none !important; }
+  .filedrop { border: 1px dashed var(--line); border-radius: 10px; padding: 14px; text-align: center; color: var(--muted); cursor: pointer; }
+  .filedrop:hover { border-color: var(--accent-2); color: var(--text); }
+  .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--panel-2); border: 1px solid var(--accent-2); color: var(--text); padding: 10px 16px; border-radius: 10px; z-index: 100; opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+  small.hint { color: var(--muted); font-size: 11.5px; }
+
+  @media (max-width: 900px) {
+    .layout { flex-direction: column; height: auto; }
+    .gutter { display: none; }
+    .pane.left, .pane.center, .pane.right { width: 100% !important; border: none; border-bottom: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="logo-badge">Q</div>
+  <div>
+    <h1>WhatsApp 报价图片生成器</h1>
+    <div class="sub">商品库 · 需求解析 · 报价图片 · COA Summary</div>
+  </div>
+  <div class="grow"></div>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="quote" onclick="switchTab('quote')">报价生成</button>
+    <button class="tab-btn" data-tab="coa" onclick="switchTab('coa')">COA Summary</button>
+  </div>
+</header>
+
+<!-- ============ 报价生成视图 ============ -->
+<div id="view-quote" class="layout">
+  <!-- 左：商品库 -->
+  <div class="pane left" id="paneLeft">
+    <div class="card">
+      <h2><span class="dot"></span>商品库</h2>
+      <div class="btnrow" style="margin-bottom:10px">
+        <button class="sm" onclick="document.getElementById('fileImport').click()">导入文件</button>
+        <button class="sm" onclick="downloadTemplate()">下载模板</button>
+        <button class="sm" onclick="openPasteImport()">粘贴导入</button>
+      </div>
+      <input type="file" id="fileImport" class="hidden" accept=".csv,.tsv,.xls,.xlsx" onchange="handleFileImport(event)" />
+      <div class="field">
+        <input type="text" id="productSearch" placeholder="搜索商品 / SKU / 别名…" oninput="renderProductLibrary()" />
+      </div>
+      <div class="btnrow" style="margin-bottom:10px">
+        <button class="sm primary" onclick="openAddProduct()">+ 手动添加</button>
+        <button class="sm danger" onclick="clearAllProducts()">清空</button>
+      </div>
+      <div class="muted" id="productCount" style="margin-bottom:8px"></div>
+      <div class="product-list" id="productLibrary"></div>
+    </div>
+  </div>
+
+  <div class="gutter" id="gutterLeft"></div>
+
+  <!-- 中：报价工作台 -->
+  <div class="pane center" id="paneCenter">
+    <div class="card">
+      <h2><span class="dot"></span>客户需求解析</h2>
+      <div class="field">
+        <label>粘贴客户 WhatsApp 需求文本</label>
+        <textarea id="demandText" placeholder="例如：&#10;Retatrutide&#10;20mg&#10;20 vials&#10;&#10;1 x semaglutide 10mg (10vials)"></textarea>
+      </div>
+      <div class="btnrow">
+        <button class="primary" onclick="parseDemand()">解析并加入报价</button>
+        <button class="ghost" onclick="document.getElementById('demandText').value=''">清空文本</button>
+      </div>
+      <small class="hint">规则：10 vials = 1 盒；20 vials = 2 盒；纯数字 2 = 2 盒；<code>1 x 名称 10mg (10vials)</code> 中 1 为盒数。</small>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot"></span>报价工作台</h2>
+      <div class="grid2">
+        <div class="field"><label>客户名称</label><input type="text" id="qCustomer" placeholder="客户名" oninput="renderPreview()" /></div>
+        <div class="field"><label>品牌名</label><input type="text" id="qBrand" value="LAB" oninput="renderPreview()" /></div>
+        <div class="field"><label>币种</label>
+          <select id="qCurrency" onchange="renderQuoteItems();renderPreview()">
+            <option value="USD">USD $</option>
+            <option value="EUR">EUR €</option>
+            <option value="GBP">GBP £</option>
+            <option value="CNY">CNY ¥</option>
+            <option value="AED">AED</option>
+          </select>
+        </div>
+        <div class="field"><label>报价语言</label>
+          <select id="qLang" onchange="renderPreview()">
+            <option value="en">English</option>
+            <option value="zh">中文</option>
+            <option value="es">Español</option>
+            <option value="fr">Français</option>
+            <option value="ar">العربية</option>
+            <option value="ru">Русский</option>
+          </select>
+        </div>
+        <div class="field"><label>图片模板</label>
+          <select id="qTemplate" onchange="renderPreview()">
+            <option value="techlab">Tech Lab</option>
+            <option value="premium">Premium Black</option>
+            <option value="clean">Clean White</option>
+            <option value="wholesale">Wholesale</option>
+          </select>
+        </div>
+        <div class="field"><label>WhatsApp 联系方式</label><input type="text" id="qWhatsapp" placeholder="+1 234 567 890" oninput="renderPreview()" /></div>
+        <div class="field"><label>有效期</label><input type="date" id="qValid" onchange="renderPreview()" /></div>
+        <div class="field"><label>品牌 Logo</label><input type="file" accept="image/*" id="qLogo" onchange="handleLogoUpload(event)" /></div>
+      </div>
+      <div class="field">
+        <label>整单折扣：<span id="discountLabel">0%</span></label>
+        <div class="slider-row">
+          <input type="range" id="qDiscount" min="0" max="80" value="0" step="1" oninput="onGlobalDiscount()" />
+          <span id="discountVal" style="width:42px;text-align:right">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot"></span>报价明细</h2>
+      <div id="quoteItems"></div>
+      <div class="muted" id="quoteEmpty">暂无商品，请从左侧加入或解析客户需求。</div>
+    </div>
+  </div>
+
+  <div class="gutter" id="gutterRight"></div>
+
+  <!-- 右：预览 -->
+  <div class="pane right" id="paneRight">
+    <div class="card">
+      <h2><span class="dot"></span>报价预览</h2>
+      <div class="totals" id="totalsBox" style="margin-bottom:12px"></div>
+      <canvas id="quoteCanvas" class="preview" width="1080" height="1350"></canvas>
+      <div class="btnrow" style="margin-top:12px">
+        <button class="primary" onclick="downloadQuoteImage()">下载报价图片</button>
+        <button onclick="copyQuoteText()">复制报价文字</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ COA Summary 视图 ============ -->
+<div id="view-coa" class="layout hidden">
+  <div class="pane center" style="flex:1">
+    <div class="card">
+      <h2><span class="dot"></span>COA Summary 生成器</h2>
+      <div class="btnrow" style="margin-bottom:12px">
+        <button class="sm" onclick="importFromQuote()">从报价首个产品带入</button>
+        <button class="sm" onclick="document.getElementById('coaFile').click()">上传原始 COA 图片</button>
+        <button class="sm" onclick="runOCR()">自动 OCR 识别</button>
+      </div>
+      <input type="file" id="coaFile" class="hidden" accept="image/*,.pdf" onchange="handleCoaUpload(event)" />
+      <div id="ocrStatus" class="muted" style="margin-bottom:10px"></div>
+      <div class="grid2">
+        <div class="field"><label>产品名称</label><input type="text" id="coa_product_name" oninput="renderCoaPreview()" /></div>
+        <div class="field"><label>规格</label><input type="text" id="coa_spec" oninput="renderCoaPreview()" /></div>
+        <div class="field"><label>Batch / Lot No.</label><input type="text" id="coa_batch" oninput="renderCoaPreview()" /></div>
+        <div class="field"><label>Purity / Assay</label><input type="text" id="coa_purity" oninput="renderCoaPreview()" /></div>
+        <div class="field"><label>Test Method</label><input type="text" id="coa_method" oninput="renderCoaPreview()" /></div>
+        <div class="field"><label>Lab / Source</label><input type="text" id="coa_lab" oninput="renderCoaPreview()" /></div>
+        <div class="field"><label>Report No. / Verify Key</label><input type="text" id="coa_report" oninput="renderCoaPreview()" /></div>
+        <div class="field"><label>Test Date</label><input type="text" id="coa_test_date" oninput="renderCoaPreview()" /></div>
+        <div class="field"><label>Mfg. Date</label><input type="text" id="coa_mfg_date" oninput="renderCoaPreview()" /></div>
+        <div class="field"><label>Expiry / Retest Date</label><input type="text" id="coa_expiry" oninput="renderCoaPreview()" /></div>
+        <div class="field"><label>Appearance</label><input type="text" id="coa_appearance" oninput="renderCoaPreview()" /></div>
+        <div class="field"><label>Storage</label><input type="text" id="coa_storage" oninput="renderCoaPreview()" /></div>
+      </div>
+      <div class="field"><label>Conclusion</label><textarea id="coa_conclusion" style="min-height:60px" oninput="renderCoaPreview()"></textarea></div>
+      <div class="field"><label>原始 COA OCR 文本（可编辑核对）</label><textarea id="coa_raw" style="min-height:80px" placeholder="OCR 识别结果会显示在这里，请人工核对"></textarea></div>
+    </div>
+  </div>
+  <div class="gutter"></div>
+  <div class="pane right" style="width:460px">
+    <div class="card">
+      <h2><span class="dot"></span>COA Summary 预览</h2>
+      <canvas id="coaCanvas" class="preview" width="1080" height="1350"></canvas>
+      <div class="btnrow" style="margin-top:12px">
+        <button class="primary" onclick="downloadCoaImage()">下载 COA Summary 图片</button>
+      </div>
+      <small class="hint">COA Summary 仅为统一摘要，不应伪造成原始实验室报告。OCR 结果需人工核对。</small>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- 简易弹窗：编辑/添加商品 + 粘贴导入 -->
+<div id="modalMask" class="hidden" style="position:fixed;inset:0;background:rgba(2,6,16,.6);z-index:80;display:grid;place-items:center">
+  <div class="card" style="width:480px;max-width:92vw;max-height:88vh;overflow:auto" id="modalBody"></div>
+</div>
+
+<script>
+/* ============================================================
+   全局状态与存储
+   ============================================================ */
+const LS_PRODUCTS = "whatsappQuoteProducts";
+const LS_LEFT = "quoteLeftPane";
+const LS_RIGHT = "quoteRightPane";
+
+let products = loadProducts();
+let quoteItems = [];   // {key, productId, name, spec, qty, unitPrice, cost, discount, unrecognized}
+let logoImage = null;
+let coaImage = null;
+
+const CURRENCY_SYMBOL = { USD:"$", EUR:"€", GBP:"£", CNY:"¥", AED:"AED " };
+
+const I18N = {
+  en: { title:"PRODUCT QUOTATION", customer:"Customer", valid:"Valid Until", status:"Status", active:"ACTIVE",
+        product:"Product", qty:"Qty", price:"Price", subtotal:"Subtotal", saving:"You Save", total:"TOTAL", boxes:"boxes", contact:"WhatsApp" },
+  zh: { title:"产品报价单", customer:"客户", valid:"有效期", status:"状态", active:"有效",
+        product:"产品", qty:"数量", price:"价格", subtotal:"原价合计", saving:"已优惠", total:"应付总额", boxes:"盒", contact:"微信/WhatsApp" },
+  es: { title:"COTIZACIÓN", customer:"Cliente", valid:"Válido hasta", status:"Estado", active:"ACTIVO",
+        product:"Producto", qty:"Cant.", price:"Precio", subtotal:"Subtotal", saving:"Ahorro", total:"TOTAL", boxes:"cajas", contact:"WhatsApp" },
+  fr: { title:"DEVIS PRODUIT", customer:"Client", valid:"Valable jusqu'au", status:"Statut", active:"ACTIF",
+        product:"Produit", qty:"Qté", price:"Prix", subtotal:"Sous-total", saving:"Économie", total:"TOTAL", boxes:"boîtes", contact:"WhatsApp" },
+  ar: { title:"عرض أسعار المنتج", customer:"العميل", valid:"صالح حتى", status:"الحالة", active:"نشط",
+        product:"المنتج", qty:"الكمية", price:"السعر", subtotal:"المجموع", saving:"التوفير", total:"الإجمالي", boxes:"علبة", contact:"واتساب" },
+  ru: { title:"КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ", customer:"Клиент", valid:"Действует до", status:"Статус", active:"АКТИВНО",
+        product:"Товар", qty:"Кол-во", price:"Цена", subtotal:"Сумма", saving:"Скидка", total:"ИТОГО", boxes:"кор.", contact:"WhatsApp" },
+};
+
+const TEMPLATES = {
+  techlab:   { bg1:"#06121f", bg2:"#0c2740", accent:"#2dd4bf", text:"#e6f3ff", sub:"#7fb6d6", card:"rgba(45,212,191,.08)" },
+  premium:   { bg1:"#0a0a0a", bg2:"#1c1c22", accent:"#d4af37", text:"#f5f1e6", sub:"#b9a983", card:"rgba(212,175,55,.08)" },
+  clean:     { bg1:"#ffffff", bg2:"#eef2f7", accent:"#2563eb", text:"#0f172a", sub:"#64748b", card:"rgba(37,99,235,.06)" },
+  wholesale: { bg1:"#14110a", bg2:"#3a2c12", accent:"#f59e0b", text:"#fff7e6", sub:"#d6b87f", card:"rgba(245,158,11,.10)" },
+};
+
+/* ============================================================
+   工具函数
+   ============================================================ */
+function $(id){ return document.getElementById(id); }
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove("show"),2200); }
+function uid(){ return Math.random().toString(36).slice(2,9); }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function num(v){ const n=parseFloat(v); return isNaN(n)?0:n; }
+
+function loadProducts(){
+  try { const raw = localStorage.getItem(LS_PRODUCTS); if(raw) return JSON.parse(raw); } catch(e){}
+  return seedProducts();
+}
+function saveProducts(){ localStorage.setItem(LS_PRODUCTS, JSON.stringify(products)); }
+
+function seedProducts(){
+  return [
+    { id:uid(), sku:"PEP-RETA-10", name:"Retatrutide", spec:"10mg", category:"Peptide", price:42, cost:18, aliases:["Reta","Retatrutide 10mg"] },
+    { id:uid(), sku:"PEP-RETA-20", name:"Retatrutide", spec:"20mg", category:"Peptide", price:78, cost:34, aliases:["Reta 20","Reta"] },
+    { id:uid(), sku:"PEP-SEMA-10", name:"Semaglutide", spec:"10mg", category:"Peptide", price:36, cost:15, aliases:["Sema","Semaglitude","semaglutide"] },
+    { id:uid(), sku:"PEP-TESA-10", name:"Tesamorelin", spec:"10mg", category:"Peptide", price:40, cost:17, aliases:["Tesa"] },
+    { id:uid(), sku:"PEP-KLOW-80", name:"KLOW Blend", spec:"80mg", category:"Peptide", price:65, cost:30, aliases:["KLOW","GHK-Cu Blend"] },
+    { id:uid(), sku:"PEP-PT141-10", name:"PT-141", spec:"10mg", category:"Peptide", price:28, cost:11, aliases:["PT141","Bremelanotide"] },
+    { id:uid(), sku:"BAC-WATER-10", name:"BAC Water", spec:"10ml", category:"BAC Water", price:5, cost:1.5, aliases:["Bacteriostatic Water","BAC"] },
+  ];
+}
+
+/* ============================================================
+   Tab 切换
+   ============================================================ */
+function switchTab(tab){
+  document.querySelectorAll(".tab-btn").forEach(b=>b.classList.toggle("active", b.dataset.tab===tab));
+  $("view-quote").classList.toggle("hidden", tab!=="quote");
+  $("view-coa").classList.toggle("hidden", tab!=="coa");
+  if(tab==="coa") renderCoaPreview();
+}
+
+/* ============================================================
+   商品库渲染与增删改查
+   ============================================================ */
+function renderProductLibrary(){
+  const q = ($("productSearch").value||"").trim().toLowerCase();
+  const list = products.filter(p=>{
+    if(!q) return true;
+    const hay = [p.name,p.sku,p.spec,p.category,(p.aliases||[]).join(" ")].join(" ").toLowerCase();
+    return hay.includes(q);
+  });
+  $("productCount").textContent = `共 ${products.length} 个商品` + (q?`（匹配 ${list.length}）`:"");
+  const box = $("productLibrary");
+  if(!list.length){ box.innerHTML = `<div class="muted">没有商品。</div>`; return; }
+  box.innerHTML = list.map(p=>{
+    const priceTxt = (p.price==null||p.price==="") ? `<span class="pill warn">未填价</span>` : `${curSym()}${fmt(p.price)}`;
+    return `<div class="item">
+      <div class="top">
+        <div>
+          <div class="name">${esc(p.name)} <span class="muted">${esc(p.spec||"")}</span></div>
+          <div style="margin-top:4px">${p.category?`<span class="pill cat">${esc(p.category)}</span> `:""}<span class="muted">${esc(p.sku||"")}</span></div>
+        </div>
+        <div style="text-align:right"><div>${priceTxt}</div></div>
+      </div>
+      ${(p.aliases&&p.aliases.length)?`<div class="muted" style="margin-top:6px;font-size:11.5px">别名: ${esc(p.aliases.join(", "))}</div>`:""}
+      <div class="btnrow" style="margin-top:8px">
+        <button class="sm primary" onclick="addToQuote('${p.id}')">加入报价</button>
+        <button class="sm" onclick="openEditProduct('${p.id}')">编辑</button>
+        <button class="sm danger" onclick="deleteProduct('${p.id}')">删除</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function deleteProduct(id){
+  products = products.filter(p=>p.id!==id);
+  saveProducts(); renderProductLibrary();
+}
+function clearAllProducts(){
+  if(!confirm("确定清空所有商品？")) return;
+  products = []; saveProducts(); renderProductLibrary();
+}
+
+function openAddProduct(){ openProductModal(null); }
+function openEditProduct(id){ openProductModal(products.find(p=>p.id===id)); }
+
+function openProductModal(p){
+  const isEdit = !!p;
+  p = p || { name:"", spec:"", sku:"", category:"", price:"", cost:"", aliases:[] };
+  $("modalBody").innerHTML = `
+    <h2 style="margin-top:0">${isEdit?"编辑商品":"添加商品"}</h2>
+    <div class="field"><label>名称 *</label><input id="m_name" type="text" value="${esc(p.name)}"></div>
+    <div class="grid2">
+      <div class="field"><label>规格</label><input id="m_spec" type="text" value="${esc(p.spec||"")}"></div>
+      <div class="field"><label>SKU</label><input id="m_sku" type="text" value="${esc(p.sku||"")}"></div>
+      <div class="field"><label>分类</label><input id="m_category" type="text" value="${esc(p.category||"")}"></div>
+      <div class="field"><label>售价</label><input id="m_price" type="text" value="${p.price==null?"":esc(p.price)}"></div>
+      <div class="field"><label>成本价</label><input id="m_cost" type="text" value="${p.cost==null?"":esc(p.cost)}"></div>
+    </div>
+    <div class="field"><label>别名（用 | 分隔）</label><input id="m_aliases" type="text" value="${esc((p.aliases||[]).join("|"))}"></div>
+    <div class="btnrow" style="justify-content:flex-end">
+      <button onclick="closeModal()">取消</button>
+      <button class="primary" onclick="saveProductModal('${isEdit?p.id:""}')">保存</button>
+    </div>`;
+  $("modalMask").classList.remove("hidden");
+}
+function closeModal(){ $("modalMask").classList.add("hidden"); }
+
+function saveProductModal(id){
+  const name = $("m_name").value.trim();
+  if(!name){ toast("名称必填"); return; }
+  const priceRaw = $("m_price").value.trim();
+  const costRaw = $("m_cost").value.trim();
+  const data = {
+    name,
+    spec: $("m_spec").value.trim(),
+    sku: $("m_sku").value.trim() || genSku(name, $("m_spec").value.trim()),
+    category: $("m_category").value.trim(),
+    price: priceRaw==="" ? null : num(priceRaw),
+    cost: costRaw==="" ? null : num(costRaw),
+    aliases: $("m_aliases").value.split("|").map(s=>s.trim()).filter(Boolean),
+  };
+  if(id){ const p = products.find(x=>x.id===id); Object.assign(p, data); }
+  else { products.unshift({ id:uid(), ...data }); }
+  saveProducts(); renderProductLibrary(); closeModal();
+}
+
+function genSku(name, spec){
+  const base = (name||"P").replace(/[^a-zA-Z0-9]/g,"").slice(0,6).toUpperCase()||"P";
+  const sp = (spec||"").replace(/[^a-zA-Z0-9]/g,"").toUpperCase();
+  return `${base}${sp?"-"+sp:""}-${Math.floor(Math.random()*900+100)}`;
+}
+
+/* ============================================================
+   导入：CSV / TSV / Excel / 粘贴
+   ============================================================ */
+function downloadTemplate(){
+  const csv = "sku,name,spec,category,price,cost,aliases\nPEP-RETA-10,Retatrutide,10mg,Peptide,42,18,Reta|Retatrutide 10mg\n,Semaglutide,10mg,Peptide,,,Sema|semaglutide\n";
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "product-template.csv"; a.click();
+}
+
+function handleFileImport(ev){
+  const file = ev.target.files[0]; if(!file) return;
+  const ext = file.name.split(".").pop().toLowerCase();
+  if(ext==="xls"||ext==="xlsx"){
+    if(typeof XLSX==="undefined"){ toast("XLSX 库未加载，请用 CSV/TSV"); return; }
+    const reader = new FileReader();
+    reader.onload = e=>{
+      try {
+        const wb = XLSX.read(e.target.result, {type:"array"});
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1, defval:""});
+        importRows(rows);
+      } catch(err){ toast("Excel 解析失败"); }
+    };
+    reader.readAsArrayBuffer(file);
+  } else {
+    const reader = new FileReader();
+    reader.onload = e=> importText(e.target.result);
+    reader.readAsText(file, "UTF-8");
+  }
+  ev.target.value = "";
+}
+
+function openPasteImport(){
+  $("modalBody").innerHTML = `
+    <h2 style="margin-top:0">粘贴导入</h2>
+    <small class="hint">从 Excel 复制后直接粘贴（Tab 分隔），或粘贴 CSV。第一行作为表头。</small>
+    <div class="field" style="margin-top:8px"><textarea id="pasteArea" style="min-height:200px" placeholder="sku,name,spec,category,price,cost,aliases"></textarea></div>
+    <div class="btnrow" style="justify-content:flex-end">
+      <button onclick="closeModal()">取消</button>
+      <button class="primary" onclick="(function(){importText($('pasteArea').value);closeModal();})()">导入</button>
+    </div>`;
+  $("modalMask").classList.remove("hidden");
+}
+
+function importText(text){
+  if(!text || !text.trim()){ toast("没有内容"); return; }
+  const delim = text.indexOf("\t")>=0 ? "\t" : (text.indexOf(",")>=0 ? "," : "\t");
+  const rows = text.replace(/\r/g,"").split("\n").filter(l=>l.trim()!=="").map(l=>splitLine(l, delim));
+  importRows(rows);
+}
+
+function splitLine(line, delim){
+  if(delim!==","){ return line.split(delim); }
+  const out=[]; let cur=""; let inQ=false;
+  for(let i=0;i<line.length;i++){ const c=line[i];
+    if(c==='"'){ if(inQ && line[i+1]==='"'){ cur+='"'; i++; } else inQ=!inQ; }
+    else if(c===',' && !inQ){ out.push(cur); cur=""; }
+    else cur+=c;
+  }
+  out.push(cur); return out;
+}
+
+function importRows(rows){
+  if(!rows || !rows.length){ toast("没有数据"); return; }
+  const header = rows[0].map(h=>String(h).trim().toLowerCase());
+  const isStd = header.some(h=>["sku","name","price","spec","aliases","cost","category"].includes(h));
+  let added = 0;
+  if(isStd){
+    const idx = (names)=>{ for(const n of names){ const i=header.indexOf(n); if(i>=0) return i; } return -1; };
+    const iName=idx(["name","product","产品","名称"]), iSku=idx(["sku","编号"]), iSpec=idx(["spec","规格"]),
+          iCat=idx(["category","分类"]), iPrice=idx(["price","售价","价格"]), iCost=idx(["cost","成本"]), iAlias=idx(["aliases","别名","alias"]);
+    for(let r=1;r<rows.length;r++){
+      const row = rows[r]; const name = (iName>=0?row[iName]:row[0]||"").toString().trim();
+      if(!name) continue;
+      const priceRaw = iPrice>=0 ? String(row[iPrice]).trim() : "";
+      const costRaw = iCost>=0 ? String(row[iCost]).trim() : "";
+      products.unshift({
+        id:uid(),
+        name,
+        spec: iSpec>=0? String(row[iSpec]).trim():"",
+        sku: (iSku>=0&&String(row[iSku]).trim()) ? String(row[iSku]).trim() : genSku(name, iSpec>=0?row[iSpec]:""),
+        category: iCat>=0? String(row[iCat]).trim():"",
+        price: priceRaw==="" ? null : num(priceRaw),
+        cost: costRaw==="" ? null : num(costRaw),
+        aliases: iAlias>=0 ? String(row[iAlias]).split("|").map(s=>s.trim()).filter(Boolean) : [],
+      });
+      added++;
+    }
+  } else {
+    // 中文价格表：简称 / 产品名称 / 规格 / 元/盒
+    const idx = (names)=>{ for(const n of names){ const i=header.findIndex(h=>h.includes(n)); if(i>=0) return i; } return -1; };
+    const iShort=idx(["简称"]), iName=idx(["产品名称","名称","品名"]), iSpec=idx(["规格"]), iPrice=idx(["元/盒","价格","单价","元"]);
+    let lastShort="", lastName="";
+    for(let r=1;r<rows.length;r++){
+      const row = rows[r];
+      let short = iShort>=0? String(row[iShort]||"").trim():"";
+      let name = iName>=0? String(row[iName]||"").trim():"";
+      const spec = iSpec>=0? String(row[iSpec]||"").trim():"";
+      if(!short) short=lastShort; else lastShort=short;
+      if(!name) name=lastName; else lastName=name;
+      const finalName = name || short;
+      if(!finalName) continue;
+      const priceRaw = iPrice>=0? String(row[iPrice]||"").trim():"";
+      const aliases = [short, name].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
+      products.unshift({
+        id:uid(), name:finalName, spec, sku:genSku(short||finalName, spec), category:"",
+        price: priceRaw==="" ? null : num(priceRaw.replace(/[^\d.]/g,"")),
+        cost:null, aliases,
+      });
+      added++;
+    }
+  }
+  saveProducts(); renderProductLibrary();
+  toast(`已导入 ${added} 个商品`);
+}
+
+/* ============================================================
+   客户需求解析
+   ============================================================ */
+function normalize(s){ return String(s||"").toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g," ").trim(); }
+function baseName(s){ return normalize(s).split(" ")[0]||""; }
+
+function parseDemand(){
+  const text = $("demandText").value || "";
+  if(!text.trim()){ toast("请先粘贴需求文本"); return; }
+  const blocks = splitBlocks(text);
+  let count = 0;
+  for(const blk of blocks){
+    const parsed = parseBlock(blk);
+    if(!parsed) continue;
+    const match = matchProduct(parsed.name, parsed.spec);
+    pushQuoteItem(match, parsed);
+    count++;
+  }
+  renderQuoteItems(); renderPreview();
+  toast(count?`已解析 ${count} 项需求`:"未识别到产品");
+}
+
+function splitBlocks(text){
+  const lines = text.replace(/\r/g,"").split("\n");
+  const blocks = []; let cur = [];
+  for(const ln of lines){
+    if(ln.trim()===""){ if(cur.length){ blocks.push(cur); cur=[]; } }
+    else cur.push(ln.trim());
+  }
+  if(cur.length) blocks.push(cur);
+  // 若整体没有空行分隔，但每行都像独立产品（含 mg/ml 等），尝试按单行拆
+  return blocks;
+}
+
+const SPEC_RE = /(\d+(?:\.\d+)?)\s*(mg|mcg|µg|ug|g|ml|iu)\b/i;
+const VIALS_RE = /(\d+)\s*vials?/i;
+const LEAD_QTY_RE = /^(\d+)\s*[x×*]\s*/i;
+
+function parseBlock(lines){
+  const joined = lines.join(" ");
+  let name="", spec="", boxQty=null, packNote="";
+
+  // 形如 "1 x semaglutide 10mg (10vials)"
+  const single = joined.trim();
+  const leadMatch = single.match(LEAD_QTY_RE);
+  if(leadMatch){
+    boxQty = parseInt(leadMatch[1],10);
+    let rest = single.replace(LEAD_QTY_RE,"");
+    const sp = rest.match(SPEC_RE); if(sp){ spec = sp[1]+sp[2].toLowerCase(); }
+    const vm = rest.match(VIALS_RE); if(vm) packNote = vm[1]+" vials";
+    name = rest.replace(SPEC_RE,"").replace(/\(.*?\)/g,"").replace(VIALS_RE,"").trim();
+    return { name, spec, boxQty: boxQty||1, packNote };
+  }
+
+  // 多行：第一行通常是产品名；找规格；找数量
+  // 收集 spec
+  for(const ln of lines){ const m = ln.match(SPEC_RE); if(m){ spec = m[1]+m[2].toLowerCase(); break; } }
+  // 收集 vials / 数量
+  const vm = joined.match(VIALS_RE);
+  if(vm){ const vials = parseInt(vm[1],10); boxQty = Math.max(1, Math.round(vials/10)); packNote = vials+" vials"; }
+  // 找纯数字行（盒数）
+  if(boxQty==null){
+    for(const ln of lines){ if(/^\d+$/.test(ln.trim())){ boxQty = parseInt(ln.trim(),10); break; } }
+  }
+  if(boxQty==null) boxQty = 1;
+
+  // 产品名：取第一行，去掉规格和括号
+  name = (lines[0]||"").replace(SPEC_RE,"").replace(/\(.*?\)/g,"").replace(VIALS_RE,"").replace(/^\d+\s*/,"").trim();
+  if(!name){
+    // 退而求其次：第一行就是数字时取第二行
+    for(const ln of lines){ const t = ln.replace(SPEC_RE,"").replace(VIALS_RE,"").trim(); if(t && !/^\d+$/.test(t)){ name=t; break; } }
+  }
+  if(!name && !spec) return null;
+  return { name, spec, boxQty, packNote };
+}
+
+function matchProduct(name, spec){
+  if(!name) return null;
+  const nName = normalize(name);
+  const nBase = baseName(name);
+  let best=null, bestScore=0;
+  for(const p of products){
+    let score=0;
+    const pName = normalize(p.name);
+    const pSku = normalize(p.sku);
+    const pAliases = (p.aliases||[]).map(normalize);
+    const pBase = baseName(p.name);
+
+    if(pName===nName) score += 100;
+    else if(pName.includes(nName)||nName.includes(pName)) score += 60;
+    if(pSku && pSku===nName) score += 80;
+    if(pAliases.includes(nName)) score += 70;
+    pAliases.forEach(a=>{ if(a && (nName.includes(a)||a.includes(nName))) score += 40; });
+    if(pBase && pBase===nBase) score += 30;
+
+    // 规格匹配加权
+    if(spec){
+      const ps = normalize(p.spec);
+      if(ps===normalize(spec)) score += 25;
+      else if(ps && nName.includes(ps)) score += 5;
+    }
+    if(score>bestScore){ bestScore=score; best=p; }
+  }
+  return bestScore>=30 ? best : null;
+}
+
+function pushQuoteItem(product, parsed){
+  if(product){
+    quoteItems.push({
+      key: uid(), productId: product.id,
+      name: product.name, spec: product.spec || parsed.spec || "",
+      qty: parsed.boxQty || 1,
+      unitPrice: product.price==null? 0 : product.price,
+      cost: product.cost==null? null : product.cost,
+      discount: 0, unrecognized: false,
+      packNote: parsed.packNote||"",
+      noPrice: product.price==null,
+    });
+  } else {
+    quoteItems.push({
+      key: uid(), productId: null,
+      name: parsed.name || "未识别", spec: parsed.spec || "",
+      qty: parsed.boxQty || 1, unitPrice: 0, cost: null,
+      discount: 0, unrecognized: true, packNote: parsed.packNote||"", noPrice:true,
+    });
+  }
+}
+
+function addToQuote(productId){
+  const p = products.find(x=>x.id===productId); if(!p) return;
+  quoteItems.push({
+    key:uid(), productId:p.id, name:p.name, spec:p.spec||"",
+    qty:1, unitPrice: p.price==null?0:p.price, cost:p.cost==null?null:p.cost,
+    discount:0, unrecognized:false, packNote:"", noPrice:p.price==null,
+  });
+  renderQuoteItems(); renderPreview();
+}
+
+/* ============================================================
+   报价工作台
+   ============================================================ */
+function curSym(){ return CURRENCY_SYMBOL[$("qCurrency").value] || "$"; }
+function fmt(n){ const v = Math.round(num(n)*100)/100; return (v%1===0)? v.toString() : v.toFixed(2); }
+
+function onGlobalDiscount(){
+  const v = $("qDiscount").value;
+  $("discountVal").textContent = v+"%";
+  $("discountLabel").textContent = v+"%";
+  renderPreview();
+}
+
+function renderQuoteItems(){
+  const box = $("quoteItems");
+  $("quoteEmpty").style.display = quoteItems.length? "none":"block";
+  box.innerHTML = quoteItems.map((it,i)=>{
+    const lineTotal = it.qty * it.unitPrice * (1 - it.discount/100);
+    const belowCost = (it.cost!=null) && (it.unitPrice*(1-it.discount/100) < it.cost);
+    return `<div class="item">
+      <div class="top">
+        <div class="name">${esc(it.name)} <span class="muted">${esc(it.spec)}</span>
+          ${it.unrecognized?'<span class="pill unrec">未识别</span>':''}
+          ${it.noPrice && !it.unrecognized?'<span class="pill warn">未填价</span>':''}
+          ${it.packNote?`<span class="pill">${esc(it.packNote)}</span>`:''}
+        </div>
+        <button class="sm danger" onclick="removeQuoteItem(${i})">×</button>
+      </div>
+      <div class="grid3" style="margin-top:8px">
+        <div class="field" style="margin:0"><label>数量(盒)</label><input type="number" min="0" step="1" value="${it.qty}" onchange="updItem(${i},'qty',this.value)"></div>
+        <div class="field" style="margin:0"><label>单价(${curSym()})</label><input type="number" min="0" step="0.01" value="${it.unitPrice}" onchange="updItem(${i},'unitPrice',this.value)"></div>
+        <div class="field" style="margin:0"><label>折扣(%)</label><input type="number" min="0" max="100" step="1" value="${it.discount}" onchange="updItem(${i},'discount',this.value)"></div>
+      </div>
+      <div class="row" style="justify-content:space-between;margin-top:8px">
+        <span class="muted">小计：${curSym()}${fmt(lineTotal)}</span>
+        ${belowCost?'<span class="pill warn">折后低于成本价！</span>':''}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function updItem(i, field, val){
+  quoteItems[i][field] = num(val);
+  if(field==="unitPrice" && num(val)>0) quoteItems[i].noPrice=false;
+  renderQuoteItems(); renderPreview();
+}
+function removeQuoteItem(i){ quoteItems.splice(i,1); renderQuoteItems(); renderPreview(); }
+
+function computeTotals(){
+  const gd = num($("qDiscount").value)/100;
+  let subtotal=0, afterItem=0, boxes=0;
+  quoteItems.forEach(it=>{
+    const line0 = it.qty*it.unitPrice;
+    const line1 = line0*(1-it.discount/100);
+    subtotal += line0;
+    afterItem += line1;
+    boxes += num(it.qty);
+  });
+  const finalTotal = afterItem*(1-gd);
+  const saving = subtotal - finalTotal;
+  return { subtotal, finalTotal, saving, boxes };
+}
+
+function handleLogoUpload(ev){
+  const file = ev.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e=>{ const img=new Image(); img.onload=()=>{ logoImage=img; renderPreview(); }; img.src=e.target.result; };
+  reader.readAsDataURL(file);
+}
+
+/* ============================================================
+   Canvas 报价图片生成
+   ============================================================ */
+function renderPreview(){
+  renderTotalsBox();
+  drawQuoteCanvas();
+}
+
+function renderTotalsBox(){
+  const t = computeTotals(); const s = curSym();
+  $("totalsBox").innerHTML = `
+    <div class="line"><span class="muted">原价合计</span><span>${s}${fmt(t.subtotal)}</span></div>
+    <div class="line"><span class="muted">已优惠</span><span style="color:var(--ok)">- ${s}${fmt(t.saving)}</span></div>
+    <div class="line"><span class="muted">盒数</span><span>${fmt(t.boxes)}</span></div>
+    <div class="line final"><span>应付总额</span><span>${s}${fmt(t.finalTotal)}</span></div>`;
+}
+
+function drawQuoteCanvas(){
+  const cv = $("quoteCanvas"); const ctx = cv.getContext("2d");
+  const W=1080, H=1350;
+  const tpl = TEMPLATES[$("qTemplate").value] || TEMPLATES.techlab;
+  const L = I18N[$("qLang").value] || I18N.en;
+  const s = curSym();
+  const t = computeTotals();
+  const rtl = $("qLang").value==="ar";
+
+  // 背景
+  const g = ctx.createLinearGradient(0,0,W,H);
+  g.addColorStop(0, tpl.bg1); g.addColorStop(1, tpl.bg2);
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+
+  // 顶部装饰条
+  ctx.fillStyle = tpl.accent; ctx.fillRect(0,0,W,10);
+
+  // 网格科技感
+  ctx.strokeStyle = hexA(tpl.accent, .06); ctx.lineWidth=1;
+  for(let x=0;x<W;x+=60){ ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke(); }
+  for(let y=0;y<H;y+=60){ ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke(); }
+
+  const pad=70; let y=80;
+
+  // Logo / 品牌首字母
+  const brand = $("qBrand").value || "LAB";
+  if(logoImage){
+    const lh=90, lw = logoImage.width/logoImage.height*lh;
+    ctx.drawImage(logoImage, pad, y, Math.min(lw,200), lh);
+  } else {
+    ctx.fillStyle = tpl.accent;
+    roundRect(ctx, pad, y, 90, 90, 18); ctx.fill();
+    ctx.fillStyle = tpl.bg1; ctx.font="bold 48px Arial"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText((brand[0]||"L").toUpperCase(), pad+45, y+47);
+  }
+  ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+  ctx.fillStyle = tpl.text; ctx.font="bold 40px Arial";
+  ctx.fillText(brand, pad+120, y+58);
+
+  y += 150;
+  // 标题
+  ctx.fillStyle = tpl.accent; ctx.font="bold 56px Arial";
+  ctx.fillText(L.title, pad, y);
+  y += 24;
+  ctx.strokeStyle = hexA(tpl.accent,.5); ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
+
+  y += 50;
+  // 元信息
+  ctx.font="26px Arial"; ctx.fillStyle = tpl.sub;
+  const cust = $("qCustomer").value || "-";
+  const valid = $("qValid").value || "-";
+  ctx.fillText(`${L.customer}: `, pad, y);
+  ctx.fillStyle = tpl.text; ctx.fillText(cust, pad+ctx.measureText(`${L.customer}: `).width, y);
+  ctx.fillStyle = tpl.sub;
+  ctx.textAlign="right";
+  ctx.fillText(`${L.valid}: ${valid}`, W-pad, y);
+  ctx.textAlign="left";
+  y += 36;
+  ctx.fillStyle = tpl.sub; ctx.fillText(`${L.status}: `, pad, y);
+  ctx.fillStyle = tpl.accent; ctx.fillText(L.active, pad+ctx.measureText(`${L.status}: `).width, y);
+
+  y += 50;
+  // 表头
+  ctx.fillStyle = hexA(tpl.accent,.15);
+  roundRect(ctx, pad, y, W-2*pad, 46, 8); ctx.fill();
+  ctx.fillStyle = tpl.sub; ctx.font="bold 22px Arial";
+  ctx.fillText(L.product, pad+16, y+30);
+  ctx.textAlign="center"; ctx.fillText(L.qty, W-pad-340, y+30);
+  ctx.textAlign="right"; ctx.fillText(L.price, W-pad-16, y+30);
+  ctx.textAlign="left";
+  y += 64;
+
+  // 产品行
+  ctx.font="24px Arial";
+  const maxRows = 12;
+  quoteItems.slice(0, maxRows).forEach(it=>{
+    const lineTotal = it.qty*it.unitPrice*(1-it.discount/100);
+    ctx.fillStyle = tpl.text; ctx.font="bold 25px Arial";
+    let nm = it.name + (it.spec? "  "+it.spec : "");
+    nm = clip(ctx, nm, W-2*pad-380);
+    ctx.fillText(nm, pad+16, y);
+    ctx.fillStyle = tpl.sub; ctx.font="22px Arial";
+    ctx.textAlign="center"; ctx.fillText(it.qty+" "+L.boxes, W-pad-340, y);
+    ctx.textAlign="right";
+    if(it.discount>0){
+      ctx.fillStyle = hexA(tpl.sub,.7); ctx.font="18px Arial";
+      const orig = it.qty*it.unitPrice;
+      const ow = ctx.measureText(`${s}${fmt(orig)}`).width;
+      ctx.fillText(`${s}${fmt(orig)}`, W-pad-16, y-16);
+      ctx.strokeStyle = hexA(tpl.sub,.7); ctx.beginPath(); ctx.moveTo(W-pad-16-ow, y-22); ctx.lineTo(W-pad-16, y-22); ctx.stroke();
+    }
+    ctx.fillStyle = tpl.accent; ctx.font="bold 25px Arial";
+    ctx.fillText(`${s}${fmt(lineTotal)}`, W-pad-16, y);
+    ctx.textAlign="left";
+    y += 46;
+    ctx.strokeStyle = hexA(tpl.sub,.12); ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pad, y-16); ctx.lineTo(W-pad, y-16); ctx.stroke();
+  });
+  if(quoteItems.length>maxRows){
+    ctx.fillStyle = tpl.sub; ctx.font="20px Arial";
+    ctx.fillText(`+ ${quoteItems.length-maxRows} more...`, pad+16, y+6); y+=40;
+  }
+
+  // 汇总区（底部固定）
+  let by = H-330;
+  ctx.fillStyle = hexA(tpl.accent,.10);
+  roundRect(ctx, pad, by, W-2*pad, 200, 14); ctx.fill();
+  ctx.font="26px Arial"; ctx.fillStyle = tpl.sub;
+  ctx.fillText(`${L.subtotal}`, pad+24, by+44);
+  ctx.textAlign="right"; ctx.fillStyle=tpl.text; ctx.fillText(`${s}${fmt(t.subtotal)}`, W-pad-24, by+44);
+  ctx.textAlign="left"; ctx.fillStyle=tpl.sub; ctx.fillText(`${L.saving}`, pad+24, by+84);
+  ctx.textAlign="right"; ctx.fillStyle="#34d399"; ctx.fillText(`- ${s}${fmt(t.saving)}`, W-pad-24, by+84);
+  ctx.textAlign="left"; ctx.fillStyle=tpl.sub; ctx.font="22px Arial";
+  ctx.fillText(`${fmt(t.boxes)} ${L.boxes}`, pad+24, by+120);
+
+  ctx.strokeStyle = hexA(tpl.accent,.4); ctx.beginPath(); ctx.moveTo(pad+24, by+138); ctx.lineTo(W-pad-24, by+138); ctx.stroke();
+  ctx.fillStyle = tpl.text; ctx.font="bold 34px Arial"; ctx.fillText(L.total, pad+24, by+180);
+  ctx.textAlign="right"; ctx.fillStyle = tpl.accent; ctx.font="bold 46px Arial";
+  ctx.fillText(`${s}${fmt(t.finalTotal)}`, W-pad-24, by+182);
+  ctx.textAlign="left";
+
+  // 底部联系
+  const wa = $("qWhatsapp").value;
+  if(wa){
+    ctx.fillStyle = tpl.accent; roundRect(ctx, pad, H-90, W-2*pad, 56, 12); ctx.fill();
+    ctx.fillStyle = tpl.bg1; ctx.font="bold 26px Arial"; ctx.textAlign="center";
+    ctx.fillText(`${L.contact}: ${wa}`, W/2, H-53);
+    ctx.textAlign="left";
+  }
+}
+
+function roundRect(ctx,x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function clip(ctx,text,maxW){ if(ctx.measureText(text).width<=maxW) return text; let t=text; while(t.length>1 && ctx.measureText(t+"…").width>maxW){ t=t.slice(0,-1); } return t+"…"; }
+function hexA(hex,a){ const h=hex.replace("#",""); const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16); return `rgba(${r},${g},${b},${a})`; }
+
+function downloadQuoteImage(){
+  if(!quoteItems.length){ toast("没有报价内容"); return; }
+  drawQuoteCanvas();
+  const a=document.createElement("a");
+  a.href = $("quoteCanvas").toDataURL("image/png");
+  a.download = `quote-${($("qCustomer").value||"customer").replace(/\s+/g,"_")}.png`;
+  a.click();
+}
+
+function copyQuoteText(){
+  const L = I18N[$("qLang").value]||I18N.en; const s=curSym(); const t=computeTotals();
+  let lines=[];
+  lines.push(`*${$("qBrand").value||"LAB"} - ${L.title}*`);
+  if($("qCustomer").value) lines.push(`${L.customer}: ${$("qCustomer").value}`);
+  lines.push("");
+  quoteItems.forEach(it=>{
+    const lt = it.qty*it.unitPrice*(1-it.discount/100);
+    lines.push(`• ${it.name} ${it.spec} × ${it.qty} ${L.boxes} = ${s}${fmt(lt)}`);
+  });
+  lines.push("");
+  lines.push(`${L.subtotal}: ${s}${fmt(t.subtotal)}`);
+  lines.push(`${L.saving}: ${s}${fmt(t.saving)}`);
+  lines.push(`${L.total}: ${s}${fmt(t.finalTotal)}`);
+  if($("qValid").value) lines.push(`${L.valid}: ${$("qValid").value}`);
+  if($("qWhatsapp").value) lines.push(`${L.contact}: ${$("qWhatsapp").value}`);
+  const text = lines.join("\n");
+  navigator.clipboard.writeText(text).then(()=>toast("报价文字已复制")).catch(()=>{
+    const ta=document.createElement("textarea"); ta.value=text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); toast("报价文字已复制");
+  });
+}
+
+/* ============================================================
+   COA Summary
+   ============================================================ */
+function importFromQuote(){
+  if(!quoteItems.length){ toast("报价中没有产品"); return; }
+  const it = quoteItems[0];
+  $("coa_product_name").value = it.name;
+  $("coa_spec").value = it.spec;
+  renderCoaPreview();
+}
+
+function handleCoaUpload(ev){
+  const file = ev.target.files[0]; if(!file) return;
+  if(file.type==="application/pdf"){ $("ocrStatus").textContent="已上传 PDF（留作依据）。自动识别请先转成 JPG/PNG。"; return; }
+  const reader=new FileReader();
+  reader.onload=e=>{ const img=new Image(); img.onload=()=>{ coaImage=img; $("ocrStatus").textContent="图片已上传，可点击「自动 OCR 识别」。"; }; img.src=e.target.result; };
+  reader.readAsDataURL(file);
+}
+
+let tesseractLoading=false;
+function loadTesseract(){
+  return new Promise((resolve,reject)=>{
+    if(window.Tesseract){ resolve(); return; }
+    if(tesseractLoading){ const t=setInterval(()=>{ if(window.Tesseract){clearInterval(t);resolve();} },300); return; }
+    tesseractLoading=true;
+    const s=document.createElement("script");
+    s.src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+    s.onload=()=>resolve(); s.onerror=()=>reject(new Error("Tesseract 加载失败"));
+    document.head.appendChild(s);
+  });
+}
+
+async function runOCR(){
+  if(!coaImage){ toast("请先上传 COA 图片"); return; }
+  $("ocrStatus").textContent="正在加载 OCR 引擎…";
+  try{
+    await loadTesseract();
+    $("ocrStatus").textContent="识别中，请稍候…";
+    const { data } = await Tesseract.recognize(coaImage.src, "eng", {
+      logger: m=>{ if(m.status==="recognizing text") $("ocrStatus").textContent=`识别中 ${Math.round(m.progress*100)}%`; }
+    });
+    const text = data.text || "";
+    $("coa_raw").value = text;
+    autofillCoaFromText(text);
+    $("ocrStatus").textContent="识别完成，请人工核对字段。";
+    renderCoaPreview();
+  }catch(err){ $("ocrStatus").textContent="OCR 失败："+err.message; }
+}
+
+function autofillCoaFromText(text){
+  const grab = (re)=>{ const m=text.match(re); return m? m[1].trim():""; };
+  const set=(id,val)=>{ if(val && !$(id).value) $(id).value=val; };
+  set("coa_batch", grab(/(?:batch|lot)\s*(?:no\.?|number)?\s*[:#]?\s*([A-Za-z0-9\-]+)/i));
+  set("coa_purity", grab(/(?:purity|assay)\s*[:#]?\s*([\d.]+\s*%)/i));
+  set("coa_method", grab(/\b(HPLC|LC-MS|MS|GC|UPLC|HPLC-MS)\b/i));
+  set("coa_report", grab(/(?:report\s*no\.?|verify\s*key)\s*[:#]?\s*(#?[A-Za-z0-9\-]+)/i));
+  set("coa_test_date", grab(/(?:test\s*date|date\s*of\s*test)\s*[:#]?\s*([\d]{4}[-\/.][\d]{1,2}[-\/.][\d]{1,2})/i));
+  set("coa_lab", grab(/\b(Janoshik|Colmaric|MZ\s*Biolabs|Citius)\b/i));
+}
+
+function renderCoaPreview(){
+  const cv=$("coaCanvas"); const ctx=cv.getContext("2d"); const W=1080,H=1350;
+  const accent="#2dd4bf";
+  const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,"#06121f"); g.addColorStop(1,"#0c2236");
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=accent; ctx.fillRect(0,0,W,10);
+
+  ctx.strokeStyle=hexA(accent,.06);
+  for(let y=0;y<H;y+=60){ ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke(); }
+
+  const pad=70; let y=110;
+  ctx.fillStyle=accent; ctx.font="bold 52px Arial"; ctx.fillText("COA SUMMARY", pad, y);
+  y+=18; ctx.strokeStyle=hexA(accent,.5); ctx.lineWidth=3; ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(W-pad,y);ctx.stroke();
+  y+=24;
+  ctx.fillStyle="#7fb6d6"; ctx.font="20px Arial";
+  ctx.fillText("Unified Certificate of Analysis Summary", pad, y);
+  y+=50;
+
+  // 产品标题
+  ctx.fillStyle="#e6f3ff"; ctx.font="bold 40px Arial";
+  ctx.fillText(($("coa_product_name").value||"-")+"  "+($("coa_spec").value||""), pad, y);
+  y+=50;
+
+  const rows = [
+    ["Batch / Lot No.", $("coa_batch").value],
+    ["Purity / Assay", $("coa_purity").value],
+    ["Test Method", $("coa_method").value],
+    ["Lab / Source", $("coa_lab").value],
+    ["Report No. / Verify Key", $("coa_report").value],
+    ["Test Date", $("coa_test_date").value],
+    ["Mfg. Date", $("coa_mfg_date").value],
+    ["Expiry / Retest", $("coa_expiry").value],
+    ["Appearance", $("coa_appearance").value],
+    ["Storage", $("coa_storage").value],
+  ];
+  ctx.font="26px Arial";
+  rows.forEach((r,i)=>{
+    if(i%2===0){ ctx.fillStyle=hexA(accent,.06); ctx.fillRect(pad, y-30, W-2*pad, 56); }
+    ctx.fillStyle="#7fb6d6"; ctx.font="24px Arial";
+    ctx.fillText(r[0], pad+16, y+6);
+    ctx.fillStyle="#e6f3ff"; ctx.font="bold 26px Arial";
+    ctx.textAlign="right"; ctx.fillText(clip(ctx, r[1]||"—", W-2*pad-340), W-pad-16, y+6); ctx.textAlign="left";
+    y+=56;
+  });
+
+  // 结论
+  y+=20;
+  const concl = $("coa_conclusion").value || "Meets specification.";
+  ctx.fillStyle=hexA(accent,.10); roundRect(ctx, pad, y, W-2*pad, 130, 12); ctx.fill();
+  ctx.fillStyle=accent; ctx.font="bold 24px Arial"; ctx.fillText("Conclusion", pad+20, y+38);
+  ctx.fillStyle="#e6f3ff"; ctx.font="24px Arial";
+  wrapText(ctx, concl, pad+20, y+74, W-2*pad-40, 32);
+
+  // 免责声明
+  ctx.fillStyle="#5f86a6"; ctx.font="18px Arial"; ctx.textAlign="center";
+  ctx.fillText("This is a unified summary, not the original laboratory report.", W/2, H-50);
+  ctx.textAlign="left";
+}
+
+function wrapText(ctx,text,x,y,maxW,lh){
+  const words=String(text).split(/\s+/); let line=""; let yy=y;
+  for(const w of words){
+    const test=line?line+" "+w:w;
+    if(ctx.measureText(test).width>maxW){ ctx.fillText(line,x,yy); line=w; yy+=lh; if(yy>y+lh*2) { ctx.fillText(clip(ctx,line,maxW),x,yy); return;} }
+    else line=test;
+  }
+  ctx.fillText(line,x,yy);
+}
+
+function downloadCoaImage(){
+  renderCoaPreview();
+  const a=document.createElement("a");
+  a.href=$("coaCanvas").toDataURL("image/png");
+  a.download=`coa-summary-${($("coa_product_name").value||"product").replace(/\s+/g,"_")}.png`;
+  a.click();
+}
+
+/* ============================================================
+   分栏拖动
+   ============================================================ */
+function setupGutter(gutterId, paneId, side){
+  const gutter=$(gutterId), pane=$(paneId);
+  let startX=0, startW=0, dragging=false, armed=false;
+  gutter.addEventListener("mousedown", e=>{
+    if(e.button!==0) return;
+    armed=true; startX=e.clientX; startW=pane.offsetWidth;
+    e.preventDefault();
+  });
+  window.addEventListener("mousemove", e=>{
+    if(!armed) return;
+    const dx=e.clientX-startX;
+    if(!dragging && Math.abs(dx)<8) return;  // 8px 阈值
+    dragging=true; document.body.classList.add("dragging");
+    let w = side==="left" ? startW+dx : startW-dx;
+    w=Math.max(200, Math.min(700, w));
+    pane.style.width=w+"px";
+  });
+  window.addEventListener("mouseup", ()=>{
+    if(dragging){
+      document.body.classList.remove("dragging");
+      localStorage.setItem(side==="left"?LS_LEFT:LS_RIGHT, pane.style.width);
+    }
+    armed=false; dragging=false;
+  });
+}
+
+function restorePaneWidths(){
+  const l=localStorage.getItem(LS_LEFT); if(l) $("paneLeft").style.width=l;
+  const r=localStorage.getItem(LS_RIGHT); if(r) $("paneRight").style.width=r;
+}
+
+/* ============================================================
+   初始化
+   ============================================================ */
+function init(){
+  renderProductLibrary();
+  renderQuoteItems();
+  // 默认有效期 7 天后
+  const d=new Date(); d.setDate(d.getDate()+7);
+  $("qValid").value = d.toISOString().slice(0,10);
+  renderPreview();
+  setupGutter("gutterLeft","paneLeft","left");
+  setupGutter("gutterRight","paneRight","right");
+  restorePaneWidths();
+  $("modalMask").addEventListener("click", e=>{ if(e.target.id==="modalMask") closeModal(); });
+}
+init();
+</script>
+</body>
+</html>
