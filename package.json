@@ -1,0 +1,15 @@
+{
+  "name": "whatsapp-quote-system",
+  "version": "1.0.0",
+  "description": "WhatsApp 报价图片生成器 + COA Summary 生成器（纯前端静态应用）",
+  "private": true,
+  "scripts": {
+    "start": "serve -s . -l ${PORT:-3000}"
+  },
+  "dependencies": {
+    "serve": "^14.2.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
